@@ -1,0 +1,204 @@
+// =========================
+// PROJECT: POSHAN MITHRA (PRODUCTION READY)
+// =========================
+
+// FOLDER STRUCTURE
+/*
+poshan-app/
+  ├── user/
+  │   ├── index.html
+  │   ├── app.html
+  │   ├── app.js
+  │
+  ├── admin/
+  │   ├── index.html
+  │   ├── admin.js
+  │
+  ├── shared/
+  │   ├── supabaseClient.js
+*/
+
+// =========================
+// shared/supabaseClient.js
+// =========================
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+export const supabase = createClient(
+  "https://kkhkhiseinobitrvwljd.supabase.co",
+  "sb_publishable_gJqTRdRi7KfbMM9uWV-2UA_ZPQETx0t"
+);
+
+
+// =========================
+// user/index.html (LOGIN)
+// =========================
+<!DOCTYPE html>
+<html>
+<head>
+<title>Login</title>
+</head>
+<body>
+<h2>User Login</h2>
+<input id="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button onclick="signup()">Sign Up</button>
+<button onclick="login()">Login</button>
+
+<script type="module">
+import { supabase } from "../shared/supabaseClient.js";
+
+window.signup = async () => {
+  await supabase.auth.signUp({
+    email: email.value,
+    password: password.value
+  });
+  alert("Check email for confirmation");
+};
+
+window.login = async () => {
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.value,
+    password: password.value
+  });
+
+  if (!error) location.href = "app.html";
+};
+</script>
+</body>
+</html>
+
+
+// =========================
+// user/app.html
+// =========================
+<!DOCTYPE html>
+<html>
+<head>
+<title>User Dashboard</title>
+</head>
+<body>
+<h2>Assessment</h2>
+<input id="age" placeholder="Age">
+<input id="height" placeholder="Height (cm)">
+<input id="weight" placeholder="Weight (kg)">
+<button onclick="saveData()">Save</button>
+
+<h3>Your History</h3>
+<div id="list"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
+
+
+// =========================
+// user/app.js
+// =========================
+import { supabase } from "../shared/supabaseClient.js";
+
+async function getUser() {
+  const { data } = await supabase.auth.getUser();
+  return data.user;
+}
+
+window.saveData = async () => {
+  const user = await getUser();
+
+  const h = height.value;
+  const w = weight.value;
+  const bmi = w / ((h / 100) ** 2);
+
+  await supabase.from("assessments").insert({
+    user_id: user.id,
+    age: age.value,
+    height_cm: h,
+    weight_kg: w,
+    bmi: bmi
+  });
+
+  loadData();
+};
+
+async function loadData() {
+  const { data } = await supabase
+    .from("assessments")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  list.innerHTML = data.map(d =>
+    `<p>BMI: ${d.bmi.toFixed(1)}</p>`
+  ).join("");
+}
+
+loadData();
+
+
+// =========================
+// admin/index.html
+// =========================
+<!DOCTYPE html>
+<html>
+<head>
+<title>Admin</title>
+</head>
+<body>
+<h2>Admin Dashboard</h2>
+<div>Total Users: <span id="total"></span></div>
+<div>High Risk: <span id="high"></span></div>
+
+<script type="module" src="admin.js"></script>
+</body>
+</html>
+
+
+// =========================
+// admin/admin.js
+// =========================
+import { supabase } from "../shared/supabaseClient.js";
+
+const ADMIN_EMAIL = "your@email.com";
+
+async function init() {
+  const { data } = await supabase.auth.getUser();
+
+  if (!data.user || data.user.email !== ADMIN_EMAIL) {
+    alert("Access denied");
+    window.location.href = "../user/index.html";
+    return;
+  }
+
+  const { data: rows } = await supabase
+    .from("assessments")
+    .select("*");
+
+  document.getElementById("total").innerText = rows.length;
+
+  const high = rows.filter(r => r.bmi > 25).length;
+  document.getElementById("high").innerText = high;
+}
+
+init();
+
+
+// =========================
+// SUPABASE SQL (RUN THIS)
+// =========================
+/*
+create table assessments (
+  id uuid default uuid_generate_v4() primary key,
+  user_id uuid references auth.users(id),
+  created_at timestamptz default now(),
+  age text,
+  height_cm numeric,
+  weight_kg numeric,
+  bmi numeric
+);
+
+alter table assessments enable row level security;
+
+create policy "Users can insert" on assessments
+for insert with check (auth.uid() = user_id);
+
+create policy "Users can view own" on assessments
+for select using (auth.uid() = user_id);
+*/
